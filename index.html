@@ -829,8 +829,9 @@ let presenceInitialized = false;
 let lastPresenceSnapshot = {};
 
 function presenceKey(name){
+  const accentMap = {'\u00e1':'a','\u00e9':'e','\u00ed':'i','\u00f3':'o','\u00fa':'u','\u00f1':'n','\u00fc':'u'};
   return name.trim().toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[\u00e1\u00e9\u00ed\u00f3\u00fa\u00f1\u00fc]/g, c => accentMap[c])
     .replace(/[^a-z0-9]/g,'_') || 'usuario';
 }
 
