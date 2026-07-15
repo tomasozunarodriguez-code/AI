@@ -162,12 +162,50 @@
   .btn-primary:disabled{opacity:.5;cursor:not-allowed;}
   .field-error{color:var(--red);font-size:11.5px;margin-top:-8px;margin-bottom:13px;display:none;}
 
+  .authGate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;
+    padding:20px;z-index:100;}
+  .authCard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
+    width:100%;max-width:380px;padding:28px 26px;text-align:center;}
+  .authCard .lockIcon{font-size:28px;margin-bottom:6px;}
+  .authCard h2{margin:0 0 6px;font-size:18px;font-weight:700;}
+  .authCard .sub{margin-bottom:18px;}
+  .authCard input{background:var(--surface2);border:1px solid var(--line);color:var(--ink);
+    padding:11px 13px;border-radius:8px;font-size:14px;font-family:inherit;width:100%;text-align:center;
+    margin-bottom:10px;}
+  .authCard input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  .authCard .btn-primary{width:100%;padding:11px;font-size:14px;}
+  .authCard .field-error{margin-top:-2px;}
+
+  .userBadge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--ink-dim);}
+  .userBadge button{background:none;border:none;color:var(--accent);font-size:11.5px;font-weight:600;
+    cursor:pointer;padding:0;font-family:inherit;text-decoration:underline;}
+
   @media (max-width:760px){ .meta{display:none;} header{align-items:center;} }
 </style>
 </head>
 <body>
 
-<div class="wrap">
+<div class="authGate" id="authGate">
+  <div class="authCard">
+    <div class="lockIcon">🔒</div>
+    <div id="authStepPassword">
+      <h2>Acceso al CRM</h2>
+      <p class="sub">Ingresa la contraseña del equipo para entrar.</p>
+      <input type="password" id="authPassword" placeholder="Contraseña" autocomplete="off">
+      <p class="field-error" id="authPasswordErr">Contraseña incorrecta, intenta de nuevo.</p>
+      <button class="btn-primary" onclick="checkPassword()">Entrar</button>
+    </div>
+    <div id="authStepName" style="display:none;">
+      <h2>¿Quién eres?</h2>
+      <p class="sub">Escribe tu nombre para que el equipo sepa quién está activo. Se recuerda en este dispositivo.</p>
+      <input type="text" id="authName" placeholder="Tu nombre" autocomplete="off">
+      <p class="field-error" id="authNameErr">Escribe tu nombre para continuar.</p>
+      <button class="btn-primary" onclick="saveName()">Entrar al CRM</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" id="appRoot" style="display:none;">
   <header>
     <div>
       <h1>CRM de Prospectos — Grupo TOR</h1>
@@ -175,6 +213,7 @@
     </div>
     <div class="headerRight">
       <span class="connStatus" id="connStatus"><span class="dot"></span> Conectando...</span>
+      <span class="userBadge">Activo: <b id="activeUserName" style="color:var(--ink)"></b> · <button onclick="switchUser()">cambiar</button></span>
       <button class="addBtn" onclick="openModal()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         Agregar cliente
@@ -700,6 +739,77 @@ document.addEventListener('keydown', (e)=>{
 ['search','fSector','fCiudad','fAsignado'].forEach(id=>{
   document.getElementById(id).addEventListener('input', render);
   document.getElementById(id).addEventListener('change', render);
+});
+
+// --- Acceso: contraseña de equipo + nombre de quien está activo ---
+const AUTH_PASSWORD = 'Grupotor2026@';
+const LS_AUTH = 'tor_crm_auth_ok';
+const LS_NAME = 'tor_crm_user_name';
+
+function showAuthStep(step){
+  document.getElementById('authStepPassword').style.display = step==='password' ? 'block' : 'none';
+  document.getElementById('authStepName').style.display = step==='name' ? 'block' : 'none';
+  const focusId = step==='password' ? 'authPassword' : 'authName';
+  setTimeout(()=>{ const el = document.getElementById(focusId); if(el) el.focus(); }, 50);
+}
+
+function enterApp(name){
+  document.getElementById('authGate').style.display = 'none';
+  document.getElementById('appRoot').style.display = '';
+  document.getElementById('activeUserName').textContent = name;
+}
+
+window.checkPassword = ()=>{
+  const val = document.getElementById('authPassword').value;
+  document.getElementById('authPasswordErr').style.display = 'none';
+  if(val === AUTH_PASSWORD){
+    localStorage.setItem(LS_AUTH, 'true');
+    showAuthStep('name');
+  }else{
+    document.getElementById('authPasswordErr').style.display = 'block';
+  }
+};
+
+window.saveName = ()=>{
+  const name = document.getElementById('authName').value.trim();
+  if(!name){
+    document.getElementById('authNameErr').style.display = 'block';
+    return;
+  }
+  localStorage.setItem(LS_NAME, name);
+  enterApp(name);
+};
+
+window.switchUser = ()=>{
+  localStorage.removeItem(LS_NAME);
+  location.reload();
+};
+
+document.getElementById('authPassword').addEventListener('keydown', e=>{ if(e.key==='Enter') checkPassword(); });
+document.getElementById('authName').addEventListener('keydown', e=>{ if(e.key==='Enter') saveName(); });
+
+(function initAuth(){
+  const authOk = localStorage.getItem(LS_AUTH) === 'true';
+  const savedName = localStorage.getItem(LS_NAME);
+  if(authOk && savedName){
+    enterApp(savedName);
+  }else if(authOk){
+    showAuthStep('name');
+  }else{
+    showAuthStep('password');
+  }
+})();
+
+// Deterrent only — this is a static page, so it cannot truly hide the source.
+// Blocks the obvious right-click / view-source / devtools shortcuts.
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('keydown', e=>{
+  const k = e.key.toLowerCase();
+  const blocked = k==='f12'
+    || (e.ctrlKey && e.shiftKey && ['i','j','c'].includes(k))
+    || (e.ctrlKey && (k==='u' || k==='s'))
+    || (e.metaKey && e.altKey && ['i','j','u'].includes(k));
+  if(blocked) e.preventDefault();
 });
 </script>
 </body>
