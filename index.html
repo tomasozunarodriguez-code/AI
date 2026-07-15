@@ -180,10 +180,28 @@
   .userBadge button{background:none;border:none;color:var(--accent);font-size:11.5px;font-weight:600;
     cursor:pointer;padding:0;font-family:inherit;text-decoration:underline;}
 
+  .teamPanel{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+  .teamPill{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);
+    border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:600;color:var(--ink-dim);}
+  .teamPill .dot{width:8px;height:8px;border-radius:50%;background:var(--gray);flex:none;}
+  .teamPill.online{color:var(--ink);}
+  .teamPill.online .dot{background:var(--green);box-shadow:0 0 5px var(--green);}
+  .teamPill .lastSeen{color:var(--ink-dim);font-weight:500;}
+
+  .toastStack{position:fixed;top:16px;right:16px;z-index:200;display:flex;flex-direction:column;gap:8px;
+    max-width:280px;}
+  .toast{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--gray);
+    border-radius:9px;padding:10px 14px;font-size:13px;font-weight:600;box-shadow:var(--shadow);
+    transition:opacity .25s ease, transform .25s ease;}
+  .toast.online{border-left-color:var(--green);}
+  .toast.offline{border-left-color:var(--red);}
+
   @media (max-width:760px){ .meta{display:none;} header{align-items:center;} }
 </style>
 </head>
 <body>
+
+<div class="toastStack" id="toastStack"></div>
 
 <div class="authGate" id="authGate">
   <div class="authCard">
@@ -220,6 +238,8 @@
       </button>
     </div>
   </header>
+
+  <div class="teamPanel" id="teamPanel"></div>
 
   <div class="stats" id="stats"></div>
 
@@ -305,7 +325,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
-  getDatabase, ref, onValue, set, update, remove, push
+  getDatabase, ref, onValue, set, update, remove, push, onDisconnect, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
 
 const firebaseConfig = {
@@ -757,6 +777,7 @@ function enterApp(name){
   document.getElementById('authGate').style.display = 'none';
   document.getElementById('appRoot').style.display = '';
   document.getElementById('activeUserName').textContent = name;
+  setupPresence(name);
 }
 
 window.checkPassword = ()=>{
@@ -799,6 +820,87 @@ document.getElementById('authName').addEventListener('keydown', e=>{ if(e.key===
     showAuthStep('password');
   }
 })();
+
+// --- Presencia en vivo: quién está conectado ahora mismo ---
+const presenceRootRef = ref(db, 'presence');
+const KNOWN_TEAM = ['Sebastian','Tomas','Samuel'];
+let myPresenceKey = null;
+let presenceInitialized = false;
+let lastPresenceSnapshot = {};
+
+function presenceKey(name){
+  return name.trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9]/g,'_') || 'usuario';
+}
+
+function setupPresence(name){
+  myPresenceKey = presenceKey(name);
+  const myPresenceRef = ref(db, 'presence/' + myPresenceKey);
+  onValue(ref(db, '.info/connected'), (snap)=>{
+    if(snap.val() === true){
+      onDisconnect(myPresenceRef).set({ name, online:false, lastSeen: serverTimestamp() });
+      set(myPresenceRef, { name, online:true, lastSeen: serverTimestamp() });
+    }
+  });
+}
+
+function timeAgo(ts){
+  if(!ts) return '';
+  const mins = Math.floor((Date.now()-ts)/60000);
+  if(mins < 1) return 'justo ahora';
+  if(mins < 60) return `hace ${mins} min`;
+  const hrs = Math.floor(mins/60);
+  if(hrs < 24) return `hace ${hrs} h`;
+  return `hace ${Math.floor(hrs/24)} d`;
+}
+
+function showToast(text, type){
+  const stack = document.getElementById('toastStack');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = text;
+  stack.appendChild(el);
+  setTimeout(()=>{
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-6px)';
+    setTimeout(()=>el.remove(), 260);
+  }, 4000);
+}
+
+function renderTeamPanel(data){
+  const entries = {};
+  KNOWN_TEAM.forEach(k=>{
+    const label = ASIGNADO_LABEL[k];
+    entries[presenceKey(label)] = { name: label, online:false, lastSeen:null };
+  });
+  Object.entries(data||{}).forEach(([key,val])=>{ entries[key] = val; });
+  const list = Object.values(entries).sort((a,b)=> (b.online - a.online) || a.name.localeCompare(b.name));
+  document.getElementById('teamPanel').innerHTML = list.map(p=>`
+    <span class="teamPill ${p.online?'online':''}">
+      <span class="dot"></span>${escapeHtml(p.name)}
+      ${p.online ? '<span class="lastSeen">· en línea</span>' : (p.lastSeen ? `<span class="lastSeen">· ${timeAgo(p.lastSeen)}</span>` : '')}
+    </span>
+  `).join('');
+}
+
+onValue(presenceRootRef, (snapshot)=>{
+  const data = snapshot.val() || {};
+  if(presenceInitialized){
+    Object.entries(data).forEach(([key,val])=>{
+      if(key === myPresenceKey) return; // don't toast about yourself
+      const prev = lastPresenceSnapshot[key];
+      if(val.online && (!prev || !prev.online)){
+        showToast(`🟢 Entró ${val.name}`, 'online');
+      }else if(!val.online && prev && prev.online){
+        showToast(`⚪ ${val.name} se desconectó`, 'offline');
+      }
+    });
+  }
+  lastPresenceSnapshot = data;
+  presenceInitialized = true;
+  renderTeamPanel(data);
+});
 
 // Deterrent only — this is a static page, so it cannot truly hide the source.
 // Blocks the obvious right-click / view-source / devtools shortcuts.
