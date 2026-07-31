@@ -615,10 +615,23 @@ function seedLeadsObject(){
 
 onValue(leadsRef, (snapshot)=>{
   const val = snapshot.val();
-  if((!val || Object.keys(val).length === 0) && !hasSeeded){
+  if(!hasSeeded){
     hasSeeded = true;
-    set(leadsRef, seedLeadsObject());
-    return; // wait for the next snapshot with real data
+    const seedObj = seedLeadsObject();
+    if(!val || Object.keys(val).length === 0){
+      set(leadsRef, seedObj);
+      return; // wait for the next snapshot with real data
+    }
+    // DB already has data (from earlier sessions) — merge in any RAW
+    // companies that aren't there yet, without touching existing records.
+    const missing = {};
+    Object.keys(seedObj).forEach(id=>{
+      if(!(id in val)) missing[id] = seedObj[id];
+    });
+    if(Object.keys(missing).length){
+      update(leadsRef, missing);
+      return; // wait for the next snapshot with the merged data
+    }
   }
   leads = val ? Object.entries(val).map(([id,l])=>({id, ...l})) : [];
   render();
