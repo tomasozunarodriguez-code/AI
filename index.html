@@ -326,7 +326,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
-  getDatabase, ref, onValue, set, update, remove, push, onDisconnect, serverTimestamp
+  getDatabase, ref, onValue, set, update, remove, push, onDisconnect, serverTimestamp, get
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
 
 const firebaseConfig = {
@@ -342,6 +342,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const leadsRef = ref(db, 'leads');
+const deletedIdsRef = ref(db, 'deletedSeedIds');
 
 const RAW = [
 ["JLC AUDITORS & ADVISORS SAS","Consultoria Contable","Bogota","+573114812361"],
@@ -673,7 +674,7 @@ function seedLeadsObject(){
   return obj;
 }
 
-onValue(leadsRef, (snapshot)=>{
+onValue(leadsRef, async (snapshot)=>{
   const val = snapshot.val();
   if(!hasSeeded){
     hasSeeded = true;
@@ -683,10 +684,18 @@ onValue(leadsRef, (snapshot)=>{
       return; // wait for the next snapshot with real data
     }
     // DB already has data (from earlier sessions) — merge in any RAW
-    // companies that aren't there yet, without touching existing records.
+    // companies that aren't there yet, without touching existing records,
+    // and without resurrecting ones someone deliberately deleted.
+    let deletedIds = {};
+    try{
+      const deletedSnap = await get(deletedIdsRef);
+      deletedIds = deletedSnap.exists() ? deletedSnap.val() : {};
+    }catch(err){
+      showToast('⚠️ No se pudo leer la lista de eliminados: '+err.message, 'offline');
+    }
     const missing = {};
     Object.keys(seedObj).forEach(id=>{
-      if(!(id in val)) missing[id] = seedObj[id];
+      if(!(id in val) && !(id in deletedIds)) missing[id] = seedObj[id];
     });
     if(Object.keys(missing).length){
       update(leadsRef, missing).catch(err=>showToast('⚠️ No se pudieron agregar '+Object.keys(missing).length+' empresas nuevas: '+err.message, 'offline'));
@@ -918,7 +927,11 @@ window.deleteLead = (id)=>{
   if(!confirm(`¿Eliminar "${l.empresa}" del CRM? Esta acción no se puede deshacer.`)) return;
   leads = leads.filter(x=>x.id!==id);
   render();
-  remove(ref(db, 'leads/'+id));
+  remove(ref(db, 'leads/'+id)).catch(err=>showToast('⚠️ No se pudo eliminar: '+err.message, 'offline'));
+  // Tombstone it so the catalog sync never re-adds this same company again.
+  if(id.startsWith('lead_')){
+    set(ref(db, 'deletedSeedIds/'+id), true).catch(err=>showToast('⚠️ No se pudo registrar como eliminado: '+err.message, 'offline'));
+  }
 };
 
 function openModal(){
