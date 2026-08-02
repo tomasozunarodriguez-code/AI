@@ -247,6 +247,7 @@
 
   <div class="toolbar">
     <input type="text" id="search" placeholder="Buscar empresa o ciudad...">
+    <select id="fPais"><option value="">Todos los países</option></select>
     <select id="fSector"><option value="">Todos los sectores</option></select>
     <select id="fCiudad"><option value="">Todas las ciudades</option></select>
     <select id="fAsignado">
@@ -770,24 +771,35 @@ function renderTabs(){
 }
 
 function populateFilterOptions(){
+  const paisSel = document.getElementById('fPais');
   const sectorSel = document.getElementById('fSector');
   const citySel = document.getElementById('fCiudad');
-  const curSector = sectorSel.value, curCity = citySel.value;
+  const curPais = paisSel.value, curSector = sectorSel.value, curCity = citySel.value;
+
+  const paises = [...new Set(leads.map(l=>l.pais || 'Colombia'))].sort();
   const sectors = [...new Set(leads.map(l=>l.sector))].sort();
-  const cities = [...new Set(leads.map(l=>l.ciudad))].sort();
+  const cities = [...new Set(
+    leads.filter(l=>!curPais || (l.pais || 'Colombia') === curPais).map(l=>l.ciudad)
+  )].sort();
+
+  paisSel.innerHTML = '<option value="">Todos los países</option>' +
+    paises.map(p=>`<option value="${p}">${p}</option>`).join('');
   sectorSel.innerHTML = '<option value="">Todos los sectores</option>' +
     sectors.map(s=>`<option value="${s}">${SECTOR_LABEL[s]||s}</option>`).join('');
   citySel.innerHTML = '<option value="">Todas las ciudades</option>' +
     cities.map(c=>`<option value="${c}">${c}</option>`).join('');
-  sectorSel.value = curSector; citySel.value = curCity;
+
+  paisSel.value = curPais; sectorSel.value = curSector; citySel.value = curCity;
 }
 
 function matchesFilters(l){
   const q = document.getElementById('search').value.toLowerCase().trim();
+  const fp = document.getElementById('fPais').value;
   const fs = document.getElementById('fSector').value;
   const fc = document.getElementById('fCiudad').value;
   const fa = document.getElementById('fAsignado').value;
   if(categoryOf(l) !== activeTab) return false;
+  if(fp && (l.pais || 'Colombia') !== fp) return false;
   if(fs && l.sector !== fs) return false;
   if(fc && l.ciudad !== fc) return false;
   if(fa === '__none__' && l.contactadoPor) return false;
@@ -951,7 +963,7 @@ document.addEventListener('keydown', (e)=>{
   if(e.key === 'Escape') closeModal();
 });
 
-['search','fSector','fCiudad','fAsignado'].forEach(id=>{
+['search','fPais','fSector','fCiudad','fAsignado'].forEach(id=>{
   document.getElementById(id).addEventListener('input', render);
   document.getElementById(id).addEventListener('change', render);
 });
