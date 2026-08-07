@@ -894,7 +894,10 @@ let hasSeeded = false;
 
 // Sectors dropped from the target niche after the fact — excluded from
 // fresh seeding, and swept out of an already-populated DB below.
-const OFF_NICHE_SECTORS = new Set(['Panaderias','Restaurantes','Abogados']);
+const OFF_NICHE_SECTORS = new Set(['Panaderias','Restaurantes']);
+// Sectors that were previously off-niche and got reinstated — clears any
+// tombstone a prior sweep may have already left on these lead ids.
+const RESTORED_SECTORS = new Set(['Abogados']);
 
 function seedLeadsObject(){
   const obj = {};
@@ -939,6 +942,15 @@ onValue(leadsRef, async (snapshot)=>{
     }catch(err){
       showToast('⚠️ No se pudo leer la lista de eliminados: '+err.message, 'offline');
     }
+    RAW.forEach((r,i)=>{
+      if(RESTORED_SECTORS.has(r[1])){
+        const id = 'lead_'+i;
+        if(id in deletedIds){
+          remove(ref(db, 'deletedSeedIds/'+id)).catch(()=>{});
+          delete deletedIds[id];
+        }
+      }
+    });
     const missing = {};
     Object.keys(seedObj).forEach(id=>{
       if(!(id in val) && !(id in deletedIds)) missing[id] = seedObj[id];
