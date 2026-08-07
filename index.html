@@ -892,9 +892,14 @@ let leads = [];  // {id, empresa, sector, ciudad, phone, web:'pendiente'|'no'|'s
 let activeTab = 'todos';
 let hasSeeded = false;
 
+// Sectors dropped from the target niche after the fact — excluded from
+// fresh seeding, and swept out of an already-populated DB below.
+const OFF_NICHE_SECTORS = new Set(['Panaderias','Restaurantes','Abogados']);
+
 function seedLeadsObject(){
   const obj = {};
   RAW.forEach((r,i)=>{
+    if(OFF_NICHE_SECTORS.has(r[1])) return;
     obj['lead_'+i] = {
       empresa:r[0], sector:r[1], ciudad:r[2], phone:r[3],
       pais:r[4] || 'Colombia', idioma:r[5] || 'es',
@@ -904,10 +909,21 @@ function seedLeadsObject(){
   return obj;
 }
 
+function sweepOffNicheLeads(val){
+  if(!val) return;
+  Object.entries(val).forEach(([id, l])=>{
+    if(OFF_NICHE_SECTORS.has(l.sector)){
+      remove(ref(db, 'leads/'+id)).catch(()=>{});
+      set(ref(db, 'deletedSeedIds/'+id), true).catch(()=>{});
+    }
+  });
+}
+
 onValue(leadsRef, async (snapshot)=>{
   const val = snapshot.val();
   if(!hasSeeded){
     hasSeeded = true;
+    sweepOffNicheLeads(val);
     const seedObj = seedLeadsObject();
     if(!val || Object.keys(val).length === 0){
       set(leadsRef, seedObj).catch(err=>showToast('⚠️ No se pudo sembrar la base: '+err.message, 'offline'));
