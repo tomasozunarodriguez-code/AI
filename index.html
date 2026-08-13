@@ -50,9 +50,6 @@
   .headerRight{display:flex;flex-direction:column;align-items:flex-end;gap:8px;}
   .connStatus{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--ink-dim);
     padding:4px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line);white-space:nowrap;}
-  .connStatus .dot{width:7px;height:7px;border-radius:50%;background:var(--gray);flex:none;}
-  .connStatus.live{color:var(--green);} .connStatus.live .dot{background:var(--green);box-shadow:0 0 6px var(--green);}
-  .connStatus.down{color:var(--red);} .connStatus.down .dot{background:var(--red);}
   .addBtn{display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:var(--accent-ink);
     border:none;padding:10px 16px;border-radius:9px;font-weight:600;font-size:13.5px;cursor:pointer;
     transition:filter .12s ease,transform .12s ease;white-space:nowrap;font-family:inherit;}
@@ -180,28 +177,10 @@
   .userBadge button{background:none;border:none;color:var(--accent);font-size:11.5px;font-weight:600;
     cursor:pointer;padding:0;font-family:inherit;text-decoration:underline;}
 
-  .teamPanel{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
-  .teamPill{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);
-    border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:600;color:var(--ink-dim);}
-  .teamPill .dot{width:8px;height:8px;border-radius:50%;background:var(--gray);flex:none;}
-  .teamPill.online{color:var(--ink);}
-  .teamPill.online .dot{background:var(--green);box-shadow:0 0 5px var(--green);}
-  .teamPill .lastSeen{color:var(--ink-dim);font-weight:500;}
-
-  .toastStack{position:fixed;top:16px;right:16px;z-index:200;display:flex;flex-direction:column;gap:8px;
-    max-width:280px;}
-  .toast{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--gray);
-    border-radius:9px;padding:10px 14px;font-size:13px;font-weight:600;box-shadow:var(--shadow);
-    transition:opacity .25s ease, transform .25s ease;}
-  .toast.online{border-left-color:var(--green);}
-  .toast.offline{border-left-color:var(--red);}
-
   @media (max-width:760px){ .meta{display:none;} header{align-items:center;} }
 </style>
 </head>
 <body>
-
-<div class="toastStack" id="toastStack"></div>
 
 <div class="authGate" id="authGate">
   <div class="authCard">
@@ -215,7 +194,7 @@
     </div>
     <div id="authStepName" style="display:none;">
       <h2>¿Quién eres?</h2>
-      <p class="sub">Escribe tu nombre para que el equipo sepa quién está activo. Se recuerda en este dispositivo.</p>
+      <p class="sub">Escribe tu nombre para identificar tus gestiones. Se recuerda en este dispositivo.</p>
       <input type="text" id="authName" placeholder="Tu nombre" autocomplete="off">
       <p class="field-error" id="authNameErr">Escribe tu nombre para continuar.</p>
       <button class="btn-primary" onclick="saveName()">Entrar al CRM</button>
@@ -227,10 +206,10 @@
   <header>
     <div>
       <h1>CRM de Prospectos — Grupo TOR</h1>
-      <p class="sub" id="subtitle">Conectando...</p>
+      <p class="sub" id="subtitle">Cargando...</p>
     </div>
     <div class="headerRight">
-      <span class="connStatus" id="connStatus"><span class="dot"></span> Conectando...</span>
+      <span class="connStatus">💾 Guardado en este navegador</span>
       <span class="userBadge">Activo: <b id="activeUserName" style="color:var(--ink)"></b> · <button onclick="switchUser()">cambiar</button></span>
       <button class="addBtn" onclick="openModal()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -238,8 +217,6 @@
       </button>
     </div>
   </header>
-
-  <div class="teamPanel" id="teamPanel"></div>
 
   <div class="stats" id="stats"></div>
 
@@ -272,7 +249,7 @@
           <th>Acciones</th>
         </tr>
       </thead>
-      <tbody id="tbody"><tr><td colspan="7"><div class="empty"><b>Cargando prospectos...</b>Conectando con la base de datos compartida.</div></td></tr></tbody>
+      <tbody id="tbody"><tr><td colspan="7"><div class="empty"><b>Cargando prospectos...</b></div></td></tr></tbody>
     </table>
   </div>
 
@@ -324,25 +301,29 @@
 </div>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-import {
-  getDatabase, ref, onValue, set, update, remove, push, onDisconnect, serverTimestamp, get
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
+// --- Almacenamiento 100% local (navegador), sin backend compartido ---
+const LS_LEADS = 'tor_crm_leads_v1';
+const LS_DELETED = 'tor_crm_deleted_ids_v1';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCDBE_Me69eRriPsAfm-onEZy36f8uFvp8",
-  authDomain: "grupotor-crm.firebaseapp.com",
-  databaseURL: "https://grupotor-crm-default-rtdb.firebaseio.com",
-  projectId: "grupotor-crm",
-  storageBucket: "grupotor-crm.firebasestorage.app",
-  messagingSenderId: "824891732233",
-  appId: "1:824891732233:web:c4344fd7dafbaa8a55a3d8"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const leadsRef = ref(db, 'leads');
-const deletedIdsRef = ref(db, 'deletedSeedIds');
+function loadLeadsFromStorage(){
+  try{ return JSON.parse(localStorage.getItem(LS_LEADS)) || {}; }
+  catch{ return {}; }
+}
+function saveLeadsToStorage(obj){
+  localStorage.setItem(LS_LEADS, JSON.stringify(obj));
+}
+function loadDeletedIds(){
+  try{ return JSON.parse(localStorage.getItem(LS_DELETED)) || {}; }
+  catch{ return {}; }
+}
+function saveDeletedIds(obj){
+  localStorage.setItem(LS_DELETED, JSON.stringify(obj));
+}
+function persistLeads(){
+  const obj = {};
+  leads.forEach(l=>{ const {id, ...rest} = l; obj[id] = rest; });
+  saveLeadsToStorage(obj);
+}
 
 const RAW = [
 ["JLC AUDITORS & ADVISORS SAS","Consultoria Contable","Bogota","+573114812361"],
@@ -1293,62 +1274,35 @@ function seedLeadsObject(){
   return obj;
 }
 
-function sweepOffNicheLeads(val){
-  if(!val) return;
-  Object.entries(val).forEach(([id, l])=>{
-    if(OFF_NICHE_SECTORS.has(l.sector)){
-      remove(ref(db, 'leads/'+id)).catch(()=>{});
-      set(ref(db, 'deletedSeedIds/'+id), true).catch(()=>{});
+function sweepOffNicheLeads(val, deletedIds){
+  Object.keys(val).forEach(id=>{
+    if(OFF_NICHE_SECTORS.has(val[id].sector)){
+      delete val[id];
+      deletedIds[id] = true;
     }
   });
 }
 
-onValue(leadsRef, async (snapshot)=>{
-  const val = snapshot.val();
-  if(!hasSeeded){
-    hasSeeded = true;
-    sweepOffNicheLeads(val);
-    const seedObj = seedLeadsObject();
-    if(!val || Object.keys(val).length === 0){
-      set(leadsRef, seedObj).catch(err=>showToast('⚠️ No se pudo sembrar la base: '+err.message, 'offline'));
-      return; // wait for the next snapshot with real data
-    }
-    // DB already has data (from earlier sessions) — merge in any RAW
-    // companies that aren't there yet, without touching existing records,
-    // and without resurrecting ones someone deliberately deleted.
-    let deletedIds = {};
-    try{
-      const deletedSnap = await get(deletedIdsRef);
-      deletedIds = deletedSnap.exists() ? deletedSnap.val() : {};
-    }catch(err){
-      showToast('⚠️ No se pudo leer la lista de eliminados: '+err.message, 'offline');
-    }
-    const missing = {};
-    Object.keys(seedObj).forEach(id=>{
-      if(!(id in val) && !(id in deletedIds)) missing[id] = seedObj[id];
-    });
-    if(Object.keys(missing).length){
-      update(leadsRef, missing).catch(err=>showToast('⚠️ No se pudieron agregar '+Object.keys(missing).length+' empresas nuevas: '+err.message, 'offline'));
-      return; // wait for the next snapshot with the merged data
-    }
-  }
-  leads = val ? Object.entries(val).map(([id,l])=>({id, ...l})) : [];
-  render();
-}, (error)=>{
-  document.getElementById('tbody').innerHTML =
-    `<tr><td colspan="7"><div class="empty"><b>No se pudo conectar a la base de datos</b>${error.message}</div></td></tr>`;
-});
-
-onValue(ref(db, '.info/connected'), (snap)=>{
-  const el = document.getElementById('connStatus');
-  if(snap.val() === true){
-    el.className = 'connStatus live';
-    el.innerHTML = '<span class="dot"></span> En vivo';
+function initLeads(){
+  let val = loadLeadsFromStorage();
+  const deletedIds = loadDeletedIds();
+  sweepOffNicheLeads(val, deletedIds);
+  const seedObj = seedLeadsObject();
+  let changed = false;
+  if(Object.keys(val).length === 0){
+    val = seedObj;
+    changed = true;
   }else{
-    el.className = 'connStatus down';
-    el.innerHTML = '<span class="dot"></span> Sin conexión';
+    // Merge in any RAW companies that aren't there yet, without touching
+    // existing records, and without resurrecting ones someone deliberately deleted.
+    Object.keys(seedObj).forEach(id=>{
+      if(!(id in val) && !(id in deletedIds)){ val[id] = seedObj[id]; changed = true; }
+    });
   }
-});
+  if(changed) saveLeadsToStorage(val);
+  saveDeletedIds(deletedIds);
+  leads = Object.entries(val).map(([id,l])=>({id, ...l}));
+}
 
 const WA_GREETING = {
   es: 'Hola! Soy Tomás de Grupo TOR 👋',
@@ -1398,7 +1352,7 @@ function renderStats(){
     <div class="stat red"><b>${noresp}</b><span>No respondieron</span></div>
     <div class="stat amber"><b>${contactados}</b><span>Ya tienen web</span></div>
   `;
-  document.getElementById('subtitle').textContent = `${total} empresas en el pipeline · compartido en tiempo real con el equipo`;
+  document.getElementById('subtitle').textContent = `${total} empresas en el pipeline · guardado localmente en este navegador`;
 }
 
 function renderTabs(){
@@ -1530,37 +1484,39 @@ window.setWeb = (id,val)=>{
   l.web = val;
   activeTab = categoryOf(l);
   render();
-  update(ref(db, 'leads/'+id), { web: val });
+  persistLeads();
 };
 window.setEstado = (id,val)=>{
   const l = localLead(id); if(!l) return;
   l.estado = val; l.web = 'no';
   activeTab = categoryOf(l);
   render();
-  update(ref(db, 'leads/'+id), { estado: val, web: 'no' });
+  persistLeads();
 };
 window.resetLead = (id)=>{
   const l = localLead(id); if(!l) return;
   l.web = 'no'; l.estado = 'nuevo';
   activeTab = categoryOf(l);
   render();
-  update(ref(db, 'leads/'+id), { web: 'no', estado: 'nuevo' });
+  persistLeads();
 };
 window.setContactadoPor = (id,val)=>{
   const l = localLead(id); if(!l) return;
   l.contactadoPor = val;
   render();
-  update(ref(db, 'leads/'+id), { contactadoPor: val });
+  persistLeads();
 };
 window.deleteLead = (id)=>{
   const l = localLead(id); if(!l) return;
   if(!confirm(`¿Eliminar "${l.empresa}" del CRM? Esta acción no se puede deshacer.`)) return;
   leads = leads.filter(x=>x.id!==id);
+  persistLeads();
   render();
-  remove(ref(db, 'leads/'+id)).catch(err=>showToast('⚠️ No se pudo eliminar: '+err.message, 'offline'));
   // Tombstone it so the catalog sync never re-adds this same company again.
   if(id.startsWith('lead_')){
-    set(ref(db, 'deletedSeedIds/'+id), true).catch(err=>showToast('⚠️ No se pudo registrar como eliminado: '+err.message, 'offline'));
+    const deletedIds = loadDeletedIds();
+    deletedIds[id] = true;
+    saveDeletedIds(deletedIds);
   }
 };
 
@@ -1589,17 +1545,17 @@ window.submitNewClient = ()=>{
     document.getElementById('fEmpresa').focus();
     return;
   }
-  const newRef = push(leadsRef);
+  const newId = 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
   const newLead = {
     empresa, sector, ciudad, phone,
     pais:'Colombia', idioma:'es',
     web:'pendiente', estado:'nuevo', contactadoPor, createdAt: Date.now()
   };
-  leads.push({id: newRef.key, ...newLead});
+  leads.push({id: newId, ...newLead});
   closeModal();
   activeTab = 'todos';
+  persistLeads();
   render();
-  set(newRef, newLead);
 };
 
 document.addEventListener('keydown', (e)=>{
@@ -1627,7 +1583,8 @@ function enterApp(name){
   document.getElementById('authGate').style.display = 'none';
   document.getElementById('appRoot').style.display = '';
   document.getElementById('activeUserName').textContent = name;
-  setupPresence(name);
+  initLeads();
+  render();
 }
 
 window.checkPassword = ()=>{
@@ -1670,88 +1627,6 @@ document.getElementById('authName').addEventListener('keydown', e=>{ if(e.key===
     showAuthStep('password');
   }
 })();
-
-// --- Presencia en vivo: quién está conectado ahora mismo ---
-const presenceRootRef = ref(db, 'presence');
-const KNOWN_TEAM = ['Sebastian','Tomas','Samuel'];
-let myPresenceKey = null;
-let presenceInitialized = false;
-let lastPresenceSnapshot = {};
-
-function presenceKey(name){
-  const accentMap = {'\u00e1':'a','\u00e9':'e','\u00ed':'i','\u00f3':'o','\u00fa':'u','\u00f1':'n','\u00fc':'u'};
-  return name.trim().toLowerCase()
-    .replace(/[\u00e1\u00e9\u00ed\u00f3\u00fa\u00f1\u00fc]/g, c => accentMap[c])
-    .replace(/[^a-z0-9]/g,'_') || 'usuario';
-}
-
-function setupPresence(name){
-  myPresenceKey = presenceKey(name);
-  const myPresenceRef = ref(db, 'presence/' + myPresenceKey);
-  onValue(ref(db, '.info/connected'), (snap)=>{
-    if(snap.val() === true){
-      onDisconnect(myPresenceRef).set({ name, online:false, lastSeen: serverTimestamp() });
-      set(myPresenceRef, { name, online:true, lastSeen: serverTimestamp() });
-    }
-  });
-}
-
-function timeAgo(ts){
-  if(!ts) return '';
-  const mins = Math.floor((Date.now()-ts)/60000);
-  if(mins < 1) return 'justo ahora';
-  if(mins < 60) return `hace ${mins} min`;
-  const hrs = Math.floor(mins/60);
-  if(hrs < 24) return `hace ${hrs} h`;
-  return `hace ${Math.floor(hrs/24)} d`;
-}
-
-function showToast(text, type){
-  const stack = document.getElementById('toastStack');
-  const el = document.createElement('div');
-  el.className = 'toast ' + type;
-  el.textContent = text;
-  stack.appendChild(el);
-  setTimeout(()=>{
-    el.style.opacity = '0';
-    el.style.transform = 'translateY(-6px)';
-    setTimeout(()=>el.remove(), 260);
-  }, 4000);
-}
-
-function renderTeamPanel(data){
-  const entries = {};
-  KNOWN_TEAM.forEach(k=>{
-    const label = ASIGNADO_LABEL[k];
-    entries[presenceKey(label)] = { name: label, online:false, lastSeen:null };
-  });
-  Object.entries(data||{}).forEach(([key,val])=>{ entries[key] = val; });
-  const list = Object.values(entries).sort((a,b)=> (b.online - a.online) || a.name.localeCompare(b.name));
-  document.getElementById('teamPanel').innerHTML = list.map(p=>`
-    <span class="teamPill ${p.online?'online':''}">
-      <span class="dot"></span>${escapeHtml(p.name)}
-      ${p.online ? '<span class="lastSeen">· en línea</span>' : (p.lastSeen ? `<span class="lastSeen">· ${timeAgo(p.lastSeen)}</span>` : '')}
-    </span>
-  `).join('');
-}
-
-onValue(presenceRootRef, (snapshot)=>{
-  const data = snapshot.val() || {};
-  if(presenceInitialized){
-    Object.entries(data).forEach(([key,val])=>{
-      if(key === myPresenceKey) return; // don't toast about yourself
-      const prev = lastPresenceSnapshot[key];
-      if(val.online && (!prev || !prev.online)){
-        showToast(`🟢 Entró ${val.name}`, 'online');
-      }else if(!val.online && prev && prev.online){
-        showToast(`⚪ ${val.name} se desconectó`, 'offline');
-      }
-    });
-  }
-  lastPresenceSnapshot = data;
-  presenceInitialized = true;
-  renderTeamPanel(data);
-});
 
 // Deterrent only — this is a static page, so it cannot truly hide the source.
 // Blocks the obvious right-click / view-source / devtools shortcuts.
