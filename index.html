@@ -210,7 +210,7 @@
     </div>
     <div class="headerRight">
       <span class="connStatus">💾 Guardado en este navegador</span>
-      <span class="userBadge">Activo: <b id="activeUserName" style="color:var(--ink)"></b> · <button onclick="switchUser()">cambiar</button></span>
+      <span class="userBadge">Activo: <b id="activeUserName" style="color:var(--ink)"></b> · <button onclick="switchUser()">cambiar</button> · <button onclick="resetLocalData()">reiniciar catálogo</button></span>
       <button class="addBtn" onclick="openModal()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         Agregar cliente
@@ -1636,6 +1636,13 @@ window.saveName = ()=>{
 
 window.switchUser = ()=>{
   localStorage.removeItem(LS_NAME);
+  location.reload();
+};
+
+window.resetLocalData = ()=>{
+  if(!confirm('¿Borrar todos los prospectos guardados en este navegador y volver a sembrar desde el catálogo actual? Esta acción no se puede deshacer.')) return;
+  localStorage.removeItem(LS_LEADS);
+  localStorage.removeItem(LS_DELETED);
   location.reload();
 };
 
