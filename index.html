@@ -142,13 +142,15 @@
   .overlay.open{display:flex;}
   .modal{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
     width:100%;max-width:440px;padding:22px;}
+  .modal.modal-wide{max-width:640px;}
   .modal h2{margin:0 0 4px;font-size:17px;font-weight:700;}
   .modal .sub{margin-bottom:16px;}
   .field{display:flex;flex-direction:column;gap:5px;margin-bottom:13px;}
   .field label{font-size:12px;font-weight:600;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.03em;}
-  .field input,.field select{background:var(--surface2);border:1px solid var(--line);color:var(--ink);
+  .field input,.field select,.field textarea{background:var(--surface2);border:1px solid var(--line);color:var(--ink);
     padding:9px 11px;border-radius:8px;font-size:13.5px;font-family:inherit;width:100%;}
-  .field input:focus,.field select:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  .field textarea{font-family:var(--font-mono);font-size:12.5px;resize:vertical;min-height:160px;}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--accent);outline-offset:1px;}
   .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
   .btn-ghost{background:transparent;border:1px solid var(--line);color:var(--ink-dim);padding:9px 15px;
     border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;}
@@ -211,6 +213,10 @@
     <div class="headerRight">
       <span class="connStatus">💾 Guardado en este navegador</span>
       <span class="userBadge">Activo: <b id="activeUserName" style="color:var(--ink)"></b> · <button onclick="switchUser()">cambiar</button> · <button onclick="resetLocalData()">reiniciar catálogo</button></span>
+      <button class="btn-ghost" onclick="openImportModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:5px;"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+        Importar prospectos
+      </button>
       <button class="addBtn" onclick="openModal()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         Agregar cliente
@@ -296,6 +302,25 @@
     <div class="modal-actions">
       <button class="btn-ghost" onclick="closeModal()">Cancelar</button>
       <button class="btn-primary" onclick="submitNewClient()">Agregar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="importOverlay" onclick="if(event.target===this) closeImportModal()">
+  <div class="modal modal-wide">
+    <h2>Importar prospectos</h2>
+    <p class="sub">Pega aquí el bloque de empresas nuevas. Se agregan a "Todos" y se guardan automáticamente en este navegador — las que ya existan (mismo nombre o teléfono) se ignoran solas.</p>
+    <div class="field">
+      <label for="fImportJson">Lista (formato JSON)</label>
+      <textarea id="fImportJson" placeholder='[
+  ["Nombre Empresa SAS","Consultoria Contable","Bogota","+573001112233"],
+  ["Otra Empresa SAS","Remodelaciones","Cali","+573004445566"]
+]'></textarea>
+    </div>
+    <p class="field-error" id="errImport"></p>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeImportModal()">Cancelar</button>
+      <button class="btn-primary" onclick="submitImport()">Importar</button>
     </div>
   </div>
 </div>
@@ -686,8 +711,66 @@ window.submitNewClient = ()=>{
   render();
 };
 
+function normName(s){
+  return String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'');
+}
+
+function openImportModal(){
+  document.getElementById('importOverlay').classList.add('open');
+  document.getElementById('fImportJson').value = '';
+  document.getElementById('errImport').style.display = 'none';
+  setTimeout(()=>document.getElementById('fImportJson').focus(), 30);
+}
+function closeImportModal(){ document.getElementById('importOverlay').classList.remove('open'); }
+window.openImportModal = openImportModal;
+window.closeImportModal = closeImportModal;
+
+window.submitImport = ()=>{
+  const raw = document.getElementById('fImportJson').value.trim();
+  const errEl = document.getElementById('errImport');
+  errEl.style.display = 'none';
+  if(!raw){
+    errEl.textContent = 'Pega la lista de empresas primero.';
+    errEl.style.display = 'block';
+    return;
+  }
+  let parsed;
+  try{
+    parsed = JSON.parse(raw);
+    if(!Array.isArray(parsed)) throw new Error('el contenido debe ser una lista []');
+  }catch(err){
+    errEl.textContent = 'El formato no es válido: ' + err.message;
+    errEl.style.display = 'block';
+    return;
+  }
+  const existingNames = new Set(leads.map(l=>normName(l.empresa)));
+  const existingPhones = new Set(leads.map(l=>l.phone).filter(Boolean));
+  let added = 0, skipped = 0, invalid = 0;
+  parsed.forEach((row, i)=>{
+    if(!Array.isArray(row) || row.length < 3){ invalid++; return; }
+    const [empresa, sector, ciudad, phone, pais, idioma] = row;
+    if(!empresa || !sector || !ciudad){ invalid++; return; }
+    const nn = normName(empresa);
+    if(existingNames.has(nn) || (phone && existingPhones.has(phone))){ skipped++; return; }
+    const newId = 'import_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,6);
+    leads.push({
+      id: newId, empresa, sector, ciudad, phone: phone || '',
+      pais: pais || 'Colombia', idioma: idioma || 'es',
+      web:'pendiente', estado:'nuevo', contactadoPor:'', createdAt: Date.now()
+    });
+    existingNames.add(nn);
+    if(phone) existingPhones.add(phone);
+    added++;
+  });
+  persistLeads();
+  activeTab = 'todos';
+  closeImportModal();
+  render();
+  alert(`Importación completa: ${added} agregadas, ${skipped} ya existían, ${invalid} filas inválidas.`);
+};
+
 document.addEventListener('keydown', (e)=>{
-  if(e.key === 'Escape') closeModal();
+  if(e.key === 'Escape'){ closeModal(); closeImportModal(); }
 });
 
 ['search','fPais','fSector','fCiudad','fAsignado'].forEach(id=>{
